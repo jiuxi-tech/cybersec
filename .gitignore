@@ -1,0 +1,5 @@
+backend/__pycache__/*
+backend/security.db
+backend/venv/*
+
+frontend/node_modules/*
