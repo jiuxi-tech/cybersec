@@ -163,6 +163,88 @@ def send_version_mismatch_email(asset, reported_version, scanned_version, servic
     """
     return send_email_notification(recipient, subject, content, email_config, asset['id'], None)
 
+def send_scan_result_email(asset_id, scan_results):
+    conn = get_db_connection()
+    asset = conn.execute('SELECT * FROM assets WHERE id = ?', (asset_id,)).fetchone()
+    conn.close()
+
+    if not asset:
+        return False, "资产不存在"
+
+    recipient = asset['manager_email']
+    if not recipient:
+        return False, f"资产 {asset['name']} (ID: {asset['id']}) 没有配置负责人邮箱"
+
+    email_config = get_email_config_from_db()
+    if not email_config:
+        return False, "邮件配置未设置，请先在管理界面配置邮件服务器"
+
+    subject = f"扫描结果通知: {asset['name']}"
+
+    # 构建扫描结果表格
+    table_rows = ""
+    for result in scan_results:
+        table_rows += f"""
+        <tr>
+            <td>{result['asset_name']}</td>
+            <td>{result['ip']}</td>
+            <td>{result['port']}</td>
+            <td>{result['service']}</td>
+            <td>{result['version']}</td>
+            <td>{result['vulnerabilities']}</td>
+            <td>{result['scan_time']}</td>
+        </tr>
+        """
+
+    content = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; }}
+            .container {{ padding: 20px; }}
+            .header {{ background-color: #ffecd2; padding: 10px; color: #d97706; }}
+            .content {{ padding: 15px; }}
+            .footer {{ background-color: #f5f5f5; padding: 10px; font-size: 12px; }}
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2>扫描结果通知</h2>
+            </div>
+            <div class="content">
+                <p>尊敬的 {asset['manager']}：</p>
+                <p>以下是资产 {asset['name']} 的最新扫描结果，包含可能的风险信息，请及时处理：</p>
+
+                <table>
+                    <tr>
+                        <th>资产名称</th>
+                        <th>IP地址</th>
+                        <th>端口</th>
+                        <th>服务</th>
+                        <th>实际版本</th>
+                        <th>漏洞信息</th>
+                        <th>扫描时间</th>
+                    </tr>
+                    {table_rows}
+                </table>
+
+                <p>请根据扫描结果采取相应措施，或联系系统管理员进一步处理。</p>
+            </div>
+            <div class="footer">
+                <p>此邮件由网络安全信息管理平台自动发送，请勿直接回复。</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    success = send_email_notification(recipient, subject, content, email_config, asset['id'], None)
+    return success, "邮件发送成功" if success else "邮件发送失败"
+
 def simulate_scan_core(ports='80,443,8080,8443,22,3389,6379', asset_id=None):
     try:
         nm = nmap.PortScanner()

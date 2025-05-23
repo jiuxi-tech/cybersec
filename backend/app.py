@@ -4,7 +4,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime
 
 from db import get_db_connection, get_email_config_from_db, save_email_config_to_db
-from util import simulate_scan_core, collect_vulnerabilities_from_nvd_core, test_send_email
+from util import simulate_scan_core, collect_vulnerabilities_from_nvd_core, test_send_email, send_scan_result_email
 
 app = Flask(__name__)
 CORS(app)
@@ -71,6 +71,21 @@ def get_scan_results():
     ''').fetchall()
     conn.close()
     return jsonify([dict(result) for result in results])
+
+@app.route('/api/send_scan_result_email', methods=['POST'])
+def send_scan_result_email_api():
+    data = request.json or {}
+    asset_id = data.get('asset_id')
+    scan_results = data.get('scan_results')
+
+    if not asset_id or not scan_results:
+        return jsonify({'status': 'error', 'message': '必须提供资产ID和扫描结果'}), 400
+
+    success, message = send_scan_result_email(asset_id, scan_results)
+    if success:
+        return jsonify({'status': 'success', 'message': message})
+    else:
+        return jsonify({'status': 'error', 'message': message}), 400
 
 @app.route('/api/compare_versions', methods=['GET'])
 def compare_versions():

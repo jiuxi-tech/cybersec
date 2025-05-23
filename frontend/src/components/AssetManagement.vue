@@ -1,7 +1,7 @@
 <template>
   <div>
     <h2>资产管理</h2>
-    
+
     <el-card>
       <template #header>
         <div class="card-header">
@@ -9,7 +9,7 @@
           <el-button type="primary" @click="showAddDialog">添加资产</el-button>
         </div>
       </template>
-      
+
       <el-table :data="assets" style="width: 100%" :row-class-name="tableRowClassName">
         <el-table-column prop="name" label="资产名称"></el-table-column>
         <el-table-column prop="type" label="类型"></el-table-column>
@@ -27,7 +27,7 @@
           </template>
         </el-table-column>
       </el-table>
-      
+
       <!-- 版本不一致警告 -->
       <el-card v-if="versionMismatches.length" style="margin-top: 20px">
         <template #header>
@@ -44,12 +44,20 @@
           <el-table-column prop="scan_time" label="扫描时间"></el-table-column>
         </el-table>
       </el-card>
-      
+
       <!-- 当前资产扫描结果 -->
       <el-card v-if="currentScanResults.length" style="margin-top: 20px">
         <template #header>
           <div class="card-header">
             <span>当前资产扫描结果</span>
+            <el-button 
+              v-if="shouldShowEmailButton" 
+              type="warning" 
+              size="small" 
+              @click="sendScanResultEmail"
+            >
+              邮件提醒
+            </el-button>
           </div>
         </template>
         <el-table :data="currentScanResults" style="width: 100%">
@@ -63,7 +71,7 @@
         </el-table>
       </el-card>
     </el-card>
-    
+
     <!-- 添加资产对话框 -->
     <el-dialog title="添加资产" v-model="dialogVisible" width="30%">
       <el-form :model="form" label-width="120px">
@@ -97,7 +105,7 @@
         <el-button type="primary" @click="addAsset">确定</el-button>
       </template>
     </el-dialog>
-    
+
     <!-- 编辑资产对话框 -->
     <el-dialog title="编辑资产" v-model="editDialogVisible" width="30%">
       <el-form :model="editForm" label-width="120px">
@@ -145,6 +153,8 @@ export default {
       editDialogVisible: false,
       currentScanResults: [],
       versionMismatches: [],
+      vulnerabilities: [], // 存储漏洞列表
+      currentAssetId: null, // 当前扫描的资产ID
       form: {
         name: '',
         type: '',
@@ -168,9 +178,29 @@ export default {
       }
     };
   },
+  computed: {
+    shouldShowEmailButton() {
+      if (!this.currentScanResults.length) return false;
+
+      // 条件1：检查是否命中漏洞列表中的漏洞
+      const hasVulnerabilityMatch = this.currentScanResults.some(result => {
+        return this.vulnerabilities.some(vuln => 
+          result.vulnerabilities && result.vulnerabilities.includes(vuln.name)
+        );
+      });
+
+      // 条件2：检查是否存在版本不一致
+      const hasVersionMismatch = this.versionMismatches.some(mismatch => 
+        mismatch.asset_id === this.currentAssetId
+      );
+
+      return hasVulnerabilityMatch || hasVersionMismatch;
+    }
+  },
   mounted() {
     this.fetchAssets();
     this.fetchVersionMismatches();
+    this.fetchVulnerabilities();
   },
   methods: {
     fetchAssets() {
@@ -191,6 +221,16 @@ export default {
         .catch(error => {
           console.error('获取版本不一致信息失败:', error);
           this.$message.error('获取版本不一致信息失败');
+        });
+    },
+    fetchVulnerabilities() {
+      axios.get('http://localhost:5000/api/vulnerabilities')
+        .then(response => {
+          this.vulnerabilities = response.data;
+        })
+        .catch(error => {
+          console.error('获取漏洞列表失败:', error);
+          this.$message.error('获取漏洞列表失败');
         });
     },
     tableRowClassName({ row }) {
@@ -252,6 +292,7 @@ export default {
     },
     startScanTask(assetId) {
       this.currentScanResults = [];
+      this.currentAssetId = assetId; // 记录当前扫描的资产ID
       axios.post('http://localhost:5000/api/simulate_scan', { ports: '80,443,8080,8443,22,3389,6379', asset_id: assetId })
         .then(response => {
           this.$message.success('扫描完成');
@@ -264,6 +305,28 @@ export default {
         .catch(error => {
           console.error('扫描失败:', error);
           this.$message.error('扫描失败');
+        });
+    },
+    sendScanResultEmail() {
+      if (!this.currentAssetId || !this.currentScanResults.length) {
+        this.$message.error('无扫描结果可发送');
+        return;
+      }
+
+      axios.post('http://localhost:5000/api/send_scan_result_email', {
+        asset_id: this.currentAssetId,
+        scan_results: this.currentScanResults
+      })
+        .then(response => {
+          if (response.data.status === 'success') {
+            this.$message.success(response.data.message);
+          } else {
+            this.$message.error(response.data.message);
+          }
+        })
+        .catch(error => {
+          console.error('发送邮件失败:', error);
+          this.$message.error('发送邮件失败');
         });
     }
   }
