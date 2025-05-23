@@ -1,10 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
+from datetime import datetime
 
 # 从其他模块导入所需函数
-from db import get_db_connection, get_email_config_from_db, save_email_config_to_db # 新增 get_email_config_from_db, save_email_config_to_db
-from util import simulate_scan_core, collect_vulnerabilities_from_nvd_core, test_send_email # 新增 test_send_email
+from db import get_db_connection, get_email_config_from_db, save_email_config_to_db
+from util import simulate_scan_core, collect_vulnerabilities_from_nvd_core, test_send_email
 
 app = Flask(__name__)
 CORS(app)
@@ -116,13 +117,11 @@ def get_vulnerabilities():
     conn.close()
     return jsonify([dict(vuln) for vuln in vulnerabilities])
 
-# 漏洞信息收集API
+# 漏洞信息收集 API
 @app.route('/api/collect_vulnerabilities', methods=['POST'])
 def collect_vulnerabilities():
     # 调用 util.py 中的漏洞收集函数
     return jsonify(collect_vulnerabilities_from_nvd_core())
-
-# --- 新增邮件配置和测试发送 API ---
 
 # 邮件配置 API
 @app.route('/api/email_config', methods=['GET', 'POST'])
@@ -147,7 +146,7 @@ def email_config_api():
             })
     elif request.method == 'POST':
         data = request.json or {}
-        print(f"Received POST data for email config: {data}") # 添加详细日志
+        print(f"Received POST data for email config: {data}")
 
         # 验证必要字段
         required_fields = ['host', 'port', 'user', 'password', 'from']
@@ -170,11 +169,11 @@ def email_config_api():
 @app.route('/api/test_email', methods=['POST'])
 def test_email_api():
     data = request.json or {}
-    print(f"Received test email data: {data}") # 添加详细日志
+    print(f"Received test email data: {data}")
 
     # 验证必要字段
-    required_fields = ['host', 'port', 'user', 'password'] # 'from' 字段对于测试邮件不是严格必需的
-    missing_fields = [field for field in required_fields if not data.get(field) is not None] # 允许 port 为 0，确保不漏判
+    required_fields = ['host', 'port', 'user', 'password']
+    missing_fields = [field for field in required_fields if not data.get(field) is not None]
     if missing_fields:
         return jsonify({'status': 'error', 'message': f'缺少必要字段: {", ".join(missing_fields)}'}), 400
 
@@ -184,7 +183,7 @@ def test_email_api():
         'port': int(data.get('port')),
         'user': data.get('user'),
         'password': data.get('password'),
-        'sender_from': data.get('user') # 测试邮件时，发件人地址通常就是发件人邮箱
+        'sender_from': data.get('user')
     }
 
     # 调用 util.py 中的测试邮件函数
@@ -192,9 +191,51 @@ def test_email_api():
     if success:
         return jsonify({'status': 'success', 'message': '测试邮件发送成功'})
     else:
-        # 错误消息更具体，包含端口和授权码提示
         return jsonify({'status': 'error', 'message': '测试邮件发送失败，请检查网络连接或邮件配置（可能是授权码错误、防火墙阻止了端口，或SMTP服务器限制）'}), 400
 
+# 新增：处置报告 API
+@app.route('/api/reports', methods=['GET', 'POST'])
+def manage_reports():
+    conn = get_db_connection()
+
+    if request.method == 'GET':
+        try:
+            reports = conn.execute('''
+            SELECT r.*, a.name as asset_name, v.name as vuln_name
+            FROM reports r
+            JOIN assets a ON r.asset_id = a.id
+            JOIN vulnerabilities v ON r.vuln_id = v.id
+            ORDER BY r.report_date DESC
+            ''').fetchall()
+            conn.close()
+            return jsonify([dict(report) for report in reports])
+        except Exception as e:
+            print(f"获取报告失败: {str(e)}")
+            conn.close()
+            return jsonify({'error': str(e)}), 500
+
+    if request.method == 'POST':
+        try:
+            data = request.json
+            conn.execute('''
+            INSERT INTO reports (asset_id, vuln_id, status, treatment_method, treatment_date, reporter, report_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                data['asset_id'],
+                data['vuln_id'],
+                data['status'],
+                data['treatment_method'],
+                data['treatment_date'],
+                data['reporter'],
+                data['report_date']
+            ))
+            conn.commit()
+            conn.close()
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            print(f"提交报告失败: {str(e)}")
+            conn.close()
+            return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

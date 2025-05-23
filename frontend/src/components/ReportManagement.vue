@@ -1,8 +1,7 @@
-
 <template>
   <div>
     <h2>漏洞处置报告管理</h2>
-    
+
     <el-card class="form-card">
       <template #header>
         <div class="card-header">
@@ -12,25 +11,25 @@
       <el-form :model="reportForm" label-width="120px">
         <el-form-item label="资产">
           <el-select v-model="reportForm.asset_id" placeholder="请选择资产" @change="updateAssetInfo">
-            <el-option 
-              v-for="asset in assets" 
-              :key="asset.id" 
-              :label="asset.name" 
+            <el-option
+              v-for="asset in assets"
+              :key="asset.id"
+              :label="asset.name"
               :value="asset.id"
             ></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="漏洞">
           <el-select v-model="reportForm.vuln_id" placeholder="请选择漏洞" @change="updateVulnInfo">
-            <el-option 
-              v-for="vuln in vulnerabilities" 
-              :key="vuln.id" 
-              :label="vuln.name" 
+            <el-option
+              v-for="vuln in vulnerabilities"
+              :key="vuln.id"
+              :label="vuln.name"
               :value="vuln.id"
             ></el-option>
           </el-select>
         </el-form-item>
-        
+
         <div v-if="selectedAsset && selectedVuln" class="info-box">
           <div class="info-section">
             <h4>资产信息</h4>
@@ -46,7 +45,7 @@
             <p><strong>解决方案:</strong> {{ selectedVuln.solution }}</p>
           </div>
         </div>
-        
+
         <el-form-item label="处置状态">
           <el-select v-model="reportForm.status" placeholder="请选择处置状态">
             <el-option label="已修复" value="fixed"></el-option>
@@ -56,7 +55,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="处置方法">
-          <el-input v-model="reportForm.treatment_method" type="textarea" rows="4"></el-input>
+          <el-input v-model="reportForm.treatment_method" type="textarea" :rows="4"></el-input>
         </el-form-item>
         <el-form-item label="处置日期">
           <el-date-picker v-model="reportForm.treatment_date" type="date" placeholder="选择日期"></el-date-picker>
@@ -70,14 +69,14 @@
         </el-form-item>
       </el-form>
     </el-card>
-    
+
     <el-card class="list-card">
       <template #header>
         <div class="card-header">
           <span>处置报告列表</span>
         </div>
       </template>
-      
+
       <el-table :data="reports" style="width: 100%">
         <el-table-column prop="id" label="ID" width="60"></el-table-column>
         <el-table-column prop="asset_name" label="资产名称"></el-table-column>
@@ -99,7 +98,7 @@
         </el-table-column>
       </el-table>
     </el-card>
-    
+
     <!-- 报告详情对话框 -->
     <el-dialog v-model="dialogVisible" title="报告详情" width="60%">
       <template v-if="selectedReport">
@@ -148,7 +147,7 @@ export default {
     this.fetchAssets();
     this.fetchVulnerabilities();
     this.fetchReports();
-    
+
     // 如果URL中有参数，自动填充表单
     const { asset_id, vuln_id } = this.$route.query;
     if (asset_id) {
@@ -168,7 +167,7 @@ export default {
     fetchAssets() {
       axios.get('http://localhost:5000/api/assets')
         .then(response => {
-          this.assets = response.data;
+          this.assets = response.data || [];
         })
         .catch(error => {
           console.error('获取资产失败:', error);
@@ -178,7 +177,7 @@ export default {
     fetchVulnerabilities() {
       axios.get('http://localhost:5000/api/vulnerabilities')
         .then(response => {
-          this.vulnerabilities = response.data;
+          this.vulnerabilities = response.data || [];
         })
         .catch(error => {
           console.error('获取漏洞失败:', error);
@@ -188,7 +187,7 @@ export default {
     fetchReports() {
       axios.get('http://localhost:5000/api/reports')
         .then(response => {
-          this.reports = response.data;
+          this.reports = response.data || [];
         })
         .catch(error => {
           console.error('获取报告失败:', error);
@@ -215,8 +214,15 @@ export default {
         this.$message.warning('请填写必要的报告信息');
         return;
       }
-      
-      axios.post('http://localhost:5000/api/reports', this.reportForm)
+
+      // 格式化日期
+      const formattedData = { ...this.reportForm };
+      if (this.reportForm.treatment_date) {
+        formattedData.treatment_date = this.formatDate(this.reportForm.treatment_date);
+      }
+      formattedData.report_date = this.formatDate(new Date());
+
+      axios.post('http://localhost:5000/api/reports', formattedData)
         .then(() => {
           this.$message.success('报告提交成功');
           this.fetchReports();
@@ -270,6 +276,11 @@ export default {
         default:
           return status;
       }
+    },
+    formatDate(date) {
+      if (!date) return '';
+      const d = new Date(date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
   }
 };
@@ -304,4 +315,3 @@ export default {
   color: #409eff;
 }
 </style>
-
