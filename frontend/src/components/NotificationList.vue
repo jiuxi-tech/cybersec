@@ -9,13 +9,13 @@
         </div>
       </template>
 
-      <el-table :data="notifications" style="width: 100%">
+      <el-table :data="notifications" style="width: 100%; margin-right: 0 !important;">
         <el-table-column prop="asset_name" label="资产名称" width="150"></el-table-column>
-        <el-table-column prop="vuln_name" label="漏洞名称" width="150"></el-table-column>
+        <el-table-column prop="sender" label="发件人" width="150"></el-table-column>
         <el-table-column prop="recipient" label="收件人" width="200"></el-table-column>
         <el-table-column prop="send_time" label="发送时间" width="180"></el-table-column>
         <el-table-column prop="status" label="状态" width="150"></el-table-column>
-        <el-table-column prop="message" label="失败原因" width="200" v-if="hasFailedNotifications"></el-table-column>
+        <el-table-column prop="message" label="失败原因" v-if="hasFailedNotifications"></el-table-column>
       </el-table>
     </el-card>
   </div>
@@ -51,6 +51,10 @@ export default {
                 timeZone: 'Asia/Tokyo'
               });
             }
+            // 如果后端数据中没有 sender 字段，尝试从其他字段（如 from 或 sender_from）获取，或使用默认值
+            if (!notification.sender) {
+              notification.sender = '网络安全信息管理平台'; // 默认发件人，可以根据实际需求调整
+            }
             return notification;
           });
         })
@@ -68,5 +72,10 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* 确保 el-table 没有右边 margin */
+.el-table {
+  margin-right: 0 !important;
 }
 </style>

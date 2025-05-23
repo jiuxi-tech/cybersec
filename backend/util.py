@@ -273,8 +273,6 @@ def simulate_scan_core(ports='80,443,8080,8443,22,3389,6379', asset_id=None):
         scan_results = []
         version_mismatches = []
 
-        email_config_for_mismatch = get_email_config_from_db()
-
         for asset in assets:
             target_ip = asset['ip']
             asset_id = asset['id']
@@ -367,15 +365,8 @@ def simulate_scan_core(ports='80,443,8080,8443,22,3389,6379', asset_id=None):
                                     'scanned_version': scanned_version,
                                     'scan_time': scan_time
                                 })
-                                if email_config_for_mismatch:
-                                    send_version_mismatch_email(
-                                        asset,
-                                        reported_version,
-                                        scanned_version,
-                                        service_name
-                                    )
-                                else:
-                                    print("警告：邮件配置未设置，无法发送版本不一致通知。")
+                                # 已移除自动发送版本不一致邮件的逻辑
+                                print(f"检测到版本不一致 - 资产: {asset_name}, 服务: {service_name}, 填报版本: {reported_version}, 实际版本: {scanned_version}")
 
             except Exception as e:
                 print(f"扫描资产 {target_ip} 失败: {str(e)}")
