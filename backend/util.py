@@ -187,6 +187,7 @@ def simulate_scan_core(ports='80,443,8080,8443,22,3389,6379', asset_id=None):
             asset_id = asset['id']
             asset_name = asset['name']
             try:
+                # 常规扫描
                 nm.scan(target_ip, arguments=f'-sV --version-all -p {ports}')
 
                 for host in nm.all_hosts():
@@ -202,6 +203,36 @@ def simulate_scan_core(ports='80,443,8080,8443,22,3389,6379', asset_id=None):
                             script_output = service_info.get('script', {}).get('vulners', '')
                             if script_output:
                                 vulnerabilities = script_output.strip() or '无'
+
+                            # 如果扫描到 Redis 服务（端口 6379），额外运行 CVE-2021-32626 漏洞扫描
+                            if service_name.lower() == 'redis' and port == 6379:
+                                try:
+                                    redis_scan = nmap.PortScanner()
+                                    redis_scan.scan(target_ip, arguments='-p6379 -sV --script redis-cve-2021-32626')
+                                    redis_host = redis_scan[target_ip]
+                                    if 'tcp' in redis_host and 6379 in redis_host['tcp']:
+                                        redis_info = redis_host['tcp'][6379]
+                                        redis_script = redis_info.get('script', {}).get('redis-cve-2021-32626', '')
+                                        if redis_script and "Vulnerable to CVE-2021-32626" in redis_script:
+                                            vulnerabilities = redis_script
+                                            # 将漏洞信息存入 vulnerabilities 表
+                                            vuln_name = "CVE-2021-32626"
+                                            existing_vuln = conn.execute('SELECT id FROM vulnerabilities WHERE name = ?', (vuln_name,)).fetchone()
+                                            if not existing_vuln:
+                                                conn.execute('''
+                                                INSERT INTO vulnerabilities (name, description, severity, affected_systems, solution, publish_date, source)
+                                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                                ''', (
+                                                    vuln_name,
+                                                    "Redis Lua Script RCE Vulnerability",
+                                                    "高危",
+                                                    "Redis 6.x",
+                                                    "升级到最新版本或参考 https://nvd.nist.gov/vuln/detail/CVE-2021-32626",
+                                                    "2021-10-04",
+                                                    "Nmap redis-cve-2021-32626 script"
+                                                ))
+                                except Exception as redis_err:
+                                    print(f"Redis CVE-2021-32626 扫描失败: {str(redis_err)}")
 
                             scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
