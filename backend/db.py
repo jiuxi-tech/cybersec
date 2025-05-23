@@ -64,6 +64,7 @@ def init_db():
         recipient TEXT,
         send_time TEXT,
         status TEXT,
+        message TEXT, -- 新增 message 字段作为可选字段
         FOREIGN KEY (asset_id) REFERENCES assets(id),
         FOREIGN KEY (vuln_id) REFERENCES vulnerabilities(id)
     )
@@ -137,12 +138,13 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def record_notification(asset_id, vuln_id, recipient, status):
+def record_notification(asset_id, vuln_id, recipient, status, message=None):
+    # 修改 record_notification 函数，增加 message 参数并设为可选
     conn = get_db_connection()
     conn.execute('''
-    INSERT INTO notifications (asset_id, vuln_id, recipient, send_time, status)
-    VALUES (?, ?, ?, ?, ?)
-    ''', (asset_id, vuln_id, recipient, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), status))
+    INSERT INTO notifications (asset_id, vuln_id, recipient, send_time, status, message)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (asset_id, vuln_id, recipient, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), status, message))
     conn.commit()
     conn.close()
 

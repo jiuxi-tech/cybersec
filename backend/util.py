@@ -56,10 +56,8 @@ def send_email_notification(recipient, subject, content, config, asset_id=None, 
             print(f"尝试发送邮件从 {EMAIL_FROM} 到 {recipient}...")
             smtp.sendmail(EMAIL_FROM, recipient, message.as_string())
             print("邮件发送成功。")
-
-            if asset_id and vuln_id:
-                record_notification(asset_id, vuln_id, recipient, 'success')
-            return True
+            status = 'success'
+            message_content = None
 
         except smtplib.SMTPAuthenticationError as auth_err:
             print(f"邮件认证失败: 用户名或授权码错误 for {EMAIL_USER}. 错误: {auth_err}")
@@ -81,7 +79,8 @@ def send_email_notification(recipient, subject, content, config, asset_id=None, 
             raise TimeoutError("邮件发送超时，可能是网络延迟或服务器响应慢。")
         except Exception as e:
             print(f"邮件发送过程中发生未知错误: {e}. 类型: {type(e)}")
-            raise
+            status = 'failed'
+            message_content = str(e)
 
         finally:
             if smtp:
@@ -91,10 +90,14 @@ def send_email_notification(recipient, subject, content, config, asset_id=None, 
                 except Exception as e:
                     print(f"关闭SMTP连接时出错: {e}")
 
+        # 记录通知到数据库，使用新的 record_notification 函数
+        record_notification(asset_id, vuln_id, recipient, status, message_content)
+
+        return status == 'success'
+
     except Exception as e:
         error_message = f"邮件发送失败: {str(e)}"
-        if asset_id and vuln_id:
-            record_notification(asset_id, vuln_id, recipient, f'failed: {error_message}')
+        record_notification(asset_id, vuln_id, recipient, 'failed', error_message)
         print(error_message)
         return False
 
@@ -181,18 +184,26 @@ def send_scan_result_email(asset_id, scan_results):
 
     subject = f"扫描结果通知: {asset['name']}"
 
-    # 构建扫描结果表格
+    # 构建扫描结果表格，增加字段检查
     table_rows = ""
     for result in scan_results:
+        port = result.get('port', '未知')
+        service = result.get('service', '未知')
+        version = result.get('version', '未知')
+        vulnerabilities = result.get('vulnerabilities', '无')
+        scan_time = result.get('scan_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        asset_name = result.get('asset_name', asset['name'])
+        ip = result.get('ip', asset['ip'])
+
         table_rows += f"""
         <tr>
-            <td>{result['asset_name']}</td>
-            <td>{result['ip']}</td>
-            <td>{result['port']}</td>
-            <td>{result['service']}</td>
-            <td>{result['version']}</td>
-            <td>{result['vulnerabilities']}</td>
-            <td>{result['scan_time']}</td>
+            <td>{asset_name}</td>
+            <td>{ip}</td>
+            <td>{port}</td>
+            <td>{service}</td>
+            <td>{version}</td>
+            <td>{vulnerabilities}</td>
+            <td>{scan_time}</td>
         </tr>
         """
 

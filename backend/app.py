@@ -3,11 +3,17 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime
 
+try:
+    from util import simulate_scan_core, collect_vulnerabilities_from_nvd_core, test_send_email, send_scan_result_email
+except ImportError as e:
+    print(f"无法导入 util 模块中的函数: {e}")
+    raise
+
 from db import get_db_connection, get_email_config_from_db, save_email_config_to_db
-from util import simulate_scan_core, collect_vulnerabilities_from_nvd_core, test_send_email, send_scan_result_email
 
 app = Flask(__name__)
-CORS(app)
+# 全局启用 CORS，允许来自 http://localhost:5173 的请求
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
@@ -76,7 +82,7 @@ def get_scan_results():
 def send_scan_result_email_api():
     data = request.json or {}
     asset_id = data.get('asset_id')
-    scan_results = data.get('scan_results')
+    scan_results = data.get('scan_results', [])
 
     if not asset_id or not scan_results:
         return jsonify({'status': 'error', 'message': '必须提供资产ID和扫描结果'}), 400
@@ -238,5 +244,18 @@ def manage_reports():
             conn.close()
             return jsonify({'error': str(e)}), 500
 
+@app.route('/api/notifications', methods=['GET'])
+def get_notifications():
+    conn = get_db_connection()
+    notifications = conn.execute('''
+    SELECT n.*, a.name as asset_name, v.name as vuln_name
+    FROM notifications n
+    LEFT JOIN assets a ON n.asset_id = a.id
+    LEFT JOIN vulnerabilities v ON n.vuln_id = v.id
+    ORDER BY n.send_time DESC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(notification) for notification in notifications])
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
